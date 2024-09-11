@@ -29,6 +29,8 @@ namespace DroneControlWinFormsApp
             commandComboBox = new ComboBox();
             sendDataButton = new Button();
             diconection = new Button();
+            armAndTakeOffButton = new Button();
+            landButton = new Button();
             leftJoystickBackgroundPictureBox = new PictureBox();
             rightJoystickBackgroundPictureBox = new PictureBox();
             leftJoystickHandlePictureBox = new PictureBox();
@@ -105,6 +107,26 @@ namespace DroneControlWinFormsApp
             diconection.UseVisualStyleBackColor = true;
             diconection.Click += disconnectButton_Click;
             // 
+            // armAndTakeOffButton
+            // 
+            armAndTakeOffButton.Location = new Point(322, 75);
+            armAndTakeOffButton.Name = "armAndTakeOffButton";
+            armAndTakeOffButton.Size = new Size(215, 40);
+            armAndTakeOffButton.TabIndex = 7;
+            armAndTakeOffButton.Text = "ARM and Take Off";
+            armAndTakeOffButton.UseVisualStyleBackColor = true;
+            armAndTakeOffButton.Click += armAndTakeOffButton_Click;
+            // 
+            // landButton
+            // 
+            landButton.Location = new Point(322, 117);
+            landButton.Name = "landButton";
+            landButton.Size = new Size(215, 40);
+            landButton.TabIndex = 8;
+            landButton.Text = "Land";
+            landButton.UseVisualStyleBackColor = true;
+            landButton.Click += landButton_Click;
+            // 
             // leftJoystickBackgroundPictureBox
             // 
             leftJoystickBackgroundPictureBox.Location = new Point(283, 198);
@@ -143,9 +165,7 @@ namespace DroneControlWinFormsApp
             rightJoystickHandlePictureBox.SizeMode = PictureBoxSizeMode.StretchImage;
             rightJoystickHandlePictureBox.TabIndex = 10;
             rightJoystickHandlePictureBox.TabStop = false;
-            rightJoystickHandlePictureBox.MouseDown += rightJoystickHandlePictureBox_MouseDown;
             rightJoystickHandlePictureBox.MouseMove += rightJoystickHandlePictureBox_MouseMove;
-            rightJoystickHandlePictureBox.MouseUp += rightJoystickHandlePictureBox_MouseUp;
             // 
             // Form1
             // 
@@ -161,6 +181,8 @@ namespace DroneControlWinFormsApp
             Controls.Add(droneListLabel);
             Controls.Add(leftJoystickBackgroundPictureBox);
             Controls.Add(rightJoystickBackgroundPictureBox);
+            Controls.Add(armAndTakeOffButton);
+            Controls.Add(landButton);
             Name = "Form1";
             Text = "Drone Control Interface";
             FormClosing += Form1_FormClosing;
@@ -183,5 +205,7 @@ namespace DroneControlWinFormsApp
         private System.Windows.Forms.PictureBox rightJoystickBackgroundPictureBox;
         private System.Windows.Forms.PictureBox leftJoystickHandlePictureBox; // 왼쪽 조이스틱 핸들
         private System.Windows.Forms.PictureBox rightJoystickHandlePictureBox; // 오른쪽 조이스틱 핸들
+        private System.Windows.Forms.Button armAndTakeOffButton;
+        private System.Windows.Forms.Button landButton;
     }
 }

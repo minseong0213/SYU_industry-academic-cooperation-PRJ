@@ -29,7 +29,10 @@ namespace DroneControlWinFormsApp
 
         private System.Windows.Forms.Timer _connectionCheckTimer;
 
-
+        private int currentThrottle = 1000; // 현재 스로틀 값 (초기값은 1000)
+        private int targetThrottle = 1500;  // 목표 스로틀 값
+        private bool isConnected = false; // 연결 상태를 저장하는 변수
+        private bool isThrottleActive = false; // 스로틀 값 전송 활성화 여부
         // 로그 텍스트박스
         private TextBox logTextBox;
 
@@ -63,13 +66,20 @@ namespace DroneControlWinFormsApp
             {
                 rightJoystickHandlePictureBox.Image = Image.FromStream(ms);
             }
-            _bluetoothClient = new BluetoothClient();
 
-            // 연결 상태 확인을 위한 타이머 설정
+            // 타이머 설정
             _connectionCheckTimer = new System.Windows.Forms.Timer();
-            _connectionCheckTimer.Interval = 5000; // 5초마다 상태 체크
+            _connectionCheckTimer.Interval = 100; // 100ms 간격으로 설정 (조정 가능)
+            _connectionCheckTimer.Tick += _connectionCheckTimer_Tick; // 이벤트 핸들러 추가
+            _connectionCheckTimer.Start();
+
+            // 초기화 및 연결 상태 확인
+            _bluetoothClient = new BluetoothClient();
             _connectionCheckTimer.Tick += CheckConnectionStatus;
             _connectionCheckTimer.Start();
+
+
+
 
             // 로그 텍스트박스 설정
             logTextBox = new TextBox();
@@ -81,14 +91,34 @@ namespace DroneControlWinFormsApp
             this.Controls.Add(logTextBox);
         }
 
+        private void _connectionCheckTimer_Tick(object sender, EventArgs e)
+        {
+            // ARM 명령이 전송된 경우에만 스로틀 값을 업데이트
+            if (isThrottleActive)
+            {
+                SendControlCommand(1500, targetThrottle); // 스로틀 값을 유지하면서 지속적으로 전송
+            }
+
+            // 기존의 연결 상태 체크
+            CheckConnectionStatus(sender, e);
+        }
+
+
+
         private void CheckConnectionStatus(object sender, EventArgs e)
         {
             if (_bluetoothClient != null && !_bluetoothClient.Connected)
             {
-                AddLog("블루투스 연결이 끊어졌습니다. 재연결 시도 중...");
+                if (isConnected) // 연결이 끊어졌을 때만 메시지 표시
+                {
+                    isConnected = false; // 연결 상태 업데이트
+                    AddLog("블루투스 연결이 끊어졌습니다. 재연결 시도 중...");
+                    MessageBox.Show("블루투스 연결이 끊어졌습니다.");
+                }
                 ReconnectToDevice();
             }
         }
+
 
         private void ReconnectToDevice()
         {
@@ -185,8 +215,13 @@ namespace DroneControlWinFormsApp
                     _bluetoothClient = new BluetoothClient();
                     _bluetoothClient.Connect(_connectedDevice.DeviceAddress, BluetoothService.SerialPort);
                     _bluetoothStream = _bluetoothClient.GetStream();
-                    MessageBox.Show("드론에 성공적으로 연결되었습니다.");
-                    AddLog("드론에 성공적으로 연결되었습니다.");
+
+                    if (!isConnected) // 연결 상태가 변할 때만 메시지 표시
+                    {
+                        isConnected = true; // 연결 상태 업데이트
+                        MessageBox.Show("드론에 성공적으로 연결되었습니다.");
+                        AddLog("드론에 성공적으로 연결되었습니다.");
+                    }
                 }
                 else
                 {
@@ -200,6 +235,7 @@ namespace DroneControlWinFormsApp
                 AddLog($"연결 오류: {ex.Message}");
             }
         }
+
 
 
         private void disconnectButton_Click(object sender, EventArgs e)
@@ -261,6 +297,7 @@ namespace DroneControlWinFormsApp
 
         private void sendDataButton_Click(object sender, EventArgs e)
         {
+            // ARM 명령을 보내는 로직
             if (_bluetoothStream != null && _bluetoothStream.CanWrite)
             {
                 byte[] command = null;
@@ -272,12 +309,7 @@ namespace DroneControlWinFormsApp
                         break;
                     case "DISARM":
                         command = createMspCommand(152, new byte[] { }); // MSP_SET_DISARM
-                        break;
-                    case "TRIM_UP":
-                        command = createMspCommand(153, new byte[] { }); // MSP_TRIM_UP
-                        break;
-                    case "TRIM_DOWN":
-                        command = createMspCommand(154, new byte[] { }); // MSP_TRIM_DOWN
+                        isThrottleActive = false; // DISARM일 때 스로틀 전송 중지
                         break;
                     default:
                         MessageBox.Show("올바른 명령을 선택하세요.");
@@ -288,6 +320,12 @@ namespace DroneControlWinFormsApp
                 {
                     _bluetoothStream.Write(command, 0, command.Length);
                     MessageBox.Show($"{commandComboBox.SelectedItem} 명령 전송 성공");
+
+                    // ARM 명령이 전송되었을 때 스로틀 전송 활성화
+                    if (commandComboBox.SelectedItem.ToString() == "ARM")
+                    {
+                        isThrottleActive = true; // ARM 상태일 때 스로틀 전송 활성화
+                    }
                 }
                 catch (Exception ex)
                 {
@@ -343,8 +381,8 @@ namespace DroneControlWinFormsApp
 
                 leftJoystickHandlePictureBox.Location = new Point(x, y);
 
-                // 드론 이동 로직 호출
-                UpdateDroneMovement(x - leftJoystickInitialPosition.X, y - leftJoystickInitialPosition.Y);
+                //// 드론 이동 로직 호출
+                //UpdateDroneMovement(x - leftJoystickInitialPosition.X, y - leftJoystickInitialPosition.Y);
             }
         }
 
@@ -361,17 +399,15 @@ namespace DroneControlWinFormsApp
 
 
 
-        // 오른쪽 조이스틱 핸들 이벤트 핸들러
-        private void rightJoystickHandlePictureBox_MouseDown(object sender, MouseEventArgs e)
-        {
-            if (e.Button == MouseButtons.Left)
-            {
-                rightJoystickOffset = new Point(e.X, e.Y);
-                rightJoystickHandlePictureBox.Capture = true;
-            }
-        }
-
-
+        //// 오른쪽 조이스틱 핸들 이벤트 핸들러
+        //private void rightJoystickHandlePictureBox_MouseDown(object sender, MouseEventArgs e)
+        //{
+        //    if (e.Button == MouseButtons.Left)
+        //    {
+        //        rightJoystickOffset = new Point(e.X, e.Y);
+        //        rightJoystickHandlePictureBox.Capture = true;
+        //    }
+        //}
         private void rightJoystickHandlePictureBox_MouseMove(object sender, MouseEventArgs e)
         {
             if (rightJoystickHandlePictureBox.Capture)
@@ -379,45 +415,77 @@ namespace DroneControlWinFormsApp
                 int x = e.X + rightJoystickHandlePictureBox.Left - rightJoystickOffset.X;
                 int y = e.Y + rightJoystickHandlePictureBox.Top - rightJoystickOffset.Y;
 
-                // 움직임을 상하 또는 좌우로만 제한
-                int deltaX = Math.Abs(x - rightJoystickInitialPosition.X);
-                int deltaY = Math.Abs(y - rightJoystickInitialPosition.Y);
+                int maxX = rightJoystickBackgroundPictureBox.Right - rightJoystickHandlePictureBox.Width;
+                int maxY = rightJoystickBackgroundPictureBox.Bottom - rightJoystickHandlePictureBox.Height;
+                int minX = rightJoystickBackgroundPictureBox.Left;
+                int minY = rightJoystickBackgroundPictureBox.Top;
 
-                // x 방향으로 움직임이 y 방향보다 크면 좌우로만 이동, 그렇지 않으면 상하로만 이동
-                if (deltaX > deltaY)
-                {
-                    // 좌우로만 이동 가능하게 설정
-                    y = rightJoystickInitialPosition.Y;
-                }
-                else
-                {
-                    // 상하로만 이동 가능하게 설정
-                    x = rightJoystickInitialPosition.X;
-                }
-
-                // 조이스틱 배경 안에만 핸들이 있도록 제한
-                x = Math.Max(rightJoystickBackgroundPictureBox.Left, Math.Min(x, rightJoystickBackgroundPictureBox.Right - rightJoystickHandlePictureBox.Width));
-                y = Math.Max(rightJoystickBackgroundPictureBox.Top, Math.Min(y, rightJoystickBackgroundPictureBox.Bottom - rightJoystickHandlePictureBox.Height));
+                x = Math.Clamp(x, minX, maxX);
+                y = Math.Clamp(y, minY, maxY);
 
                 rightJoystickHandlePictureBox.Location = new Point(x, y);
 
-                // 드론 회전 및 고도 제어 로직 호출
-                UpdateDroneRotationAndAltitude(x - rightJoystickInitialPosition.X, y - rightJoystickInitialPosition.Y);
+                // 스로틀 값을 조정하는 로직
+                ControlThrottleForTakeoff(y - rightJoystickInitialPosition.Y);
+                SendControlCommand(1500, targetThrottle); // 회전 속도는 1500으로 고정
             }
         }
 
-
-        private void rightJoystickHandlePictureBox_MouseUp(object sender, MouseEventArgs e)
+        private void ControlThrottleForTakeoff(int deltaY)
         {
-            rightJoystickHandlePictureBox.Capture = false;
+            // 조이스틱 이동량에 따라 목표 스로틀 값을 설정
+            targetThrottle = 1500 - deltaY;
 
-            //// 조이스틱 핸들 초기 위치로 되돌리기
-            //rightJoystickHandlePictureBox.Location = rightJoystickInitialPosition;
+            // 스로틀 값을 안전한 범위로 제한
+            targetThrottle = Math.Clamp(targetThrottle, 1000, 2000);
 
-            //// 드론 정지
-            //StopDroneMovement();
+            // 로그 출력
+            AddLog($"목표 스로틀 값 설정: {targetThrottle}");
 
+            // 스로틀 값을 설정한 후에도 계속 유지하고 드론에 전송합니다.
+            SendControlCommand(1500, targetThrottle);
         }
+
+
+
+        private void UpdateThrottle()
+        {
+            //// 목표 스로틀 값까지 점진적으로 증가
+            //if (currentThrottle < targetThrottle)
+            //{
+            //    currentThrottle += 10; // 10씩 증가 (조정 가능)
+            //    if (currentThrottle > targetThrottle)
+            //    {
+            //        currentThrottle = targetThrottle;
+            //    }
+            //}
+            //else if (currentThrottle > targetThrottle)
+            //{
+            //    currentThrottle -= 10; // 스로틀 감소 시에도 점진적으로
+            //    if (currentThrottle < targetThrottle)
+            //    {
+            //        currentThrottle = targetThrottle;
+            //    }
+            //}
+
+            // 현재 스로틀 값으로 드론 제어 명령 전송
+            SendControlCommand(1500, currentThrottle); // Yaw 값은 중립으로 고정 (1500)
+        }
+
+
+
+
+        //private void rightJoystickHandlePictureBox_MouseUp(object sender, MouseEventArgs e)
+        //{
+        //    rightJoystickHandlePictureBox.Capture = false;
+
+        //    //// 조이스틱 핸들 초기 위치로 되돌리기
+        //    //rightJoystickHandlePictureBox.Location = rightJoystickInitialPosition;
+
+        //    //// 드론 정지
+        //    //StopDroneMovement();
+
+        //}
 
 
 
@@ -429,15 +497,15 @@ namespace DroneControlWinFormsApp
             );
         }
 
-        private void UpdateDroneMovement(int deltaX, int deltaY)
-        {
-            // deltaX, deltaY 값에 따라 드론의 속도 및 방향 제어
-            // 예를 들어, 양수 deltaY는 전진, 음수 deltaY는 후진
-            // 양수 deltaX는 오른쪽 기울기, 음수 deltaX는 왼쪽 기울기
+        //private void UpdateDroneMovement(int deltaX, int deltaY)
+        //{
+        //    // deltaX, deltaY 값에 따라 드론의 속도 및 방향 제어
+        //    // 예를 들어, 양수 deltaY는 전진, 음수 deltaY는 후진
+        //    // 양수 deltaX는 오른쪽 기울기, 음수 deltaX는 왼쪽 기울기
 
-            // 드론 제어 명령 보내기
-            // 예: sendControlCommand("MOVE", deltaX, deltaY);
-        }
+        //    // 드론 제어 명령 보내기
+        //    // 예: sendControlCommand("MOVE", deltaX, deltaY);
+        //}
 
         private void SendControlCommand(int rotationSpeed, int throttle)
         {
@@ -445,7 +513,7 @@ namespace DroneControlWinFormsApp
             rcData[0] = 1500; // Roll 중립
             rcData[1] = 1500; // Pitch 중립
             rcData[2] = Math.Clamp(throttle, 1000, 2000); // 스로틀
-            rcData[3] = Math.Clamp(rotationSpeed, 1000, 2000); // Yaw
+            rcData[3] = 1500;
             rcData[4] = 1500; // Aux1 (기본값)
             rcData[5] = 1500; // Aux2 (기본값)
             rcData[6] = 1500; // Aux3 (기본값)
@@ -466,37 +534,44 @@ namespace DroneControlWinFormsApp
 
         private void SendToDrone(byte[] command)
         {
-            if (_bluetoothStream != null && _bluetoothStream.CanWrite)
+            if (_bluetoothClient != null && _bluetoothClient.Connected && _bluetoothStream != null && _bluetoothStream.CanWrite)
             {
                 try
                 {
                     _bluetoothStream.Write(command, 0, command.Length);
                     AddLog($"명령 전송 성공: {BitConverter.ToString(command)}");
+                    // 명령을 보낸 후 잠시 대기
+                    //System.Threading.Thread.Sleep(50); // 100ms 대기 (필요에 따라 조정)
                 }
                 catch (IOException ioEx)
                 {
-                    MessageBox.Show($"명령 전송 중 입출력 오류 발생: {ioEx.Message}");
                     AddLog($"명령 전송 중 입출력 오류 발생: {ioEx.Message}");
                     ReconnectToDevice(); // 연결 재시도
                 }
                 catch (SocketException sockEx)
                 {
-                    MessageBox.Show($"소켓 오류 발생: {sockEx.Message}");
                     AddLog($"소켓 오류 발생: {sockEx.Message}");
                     ReconnectToDevice(); // 연결 재시도
                 }
                 catch (Exception ex)
                 {
-                    MessageBox.Show($"명령 전송 오류: {ex.Message}");
                     AddLog($"명령 전송 오류: {ex.Message}");
                 }
             }
             else
             {
-                MessageBox.Show("먼저 드론에 연결하세요.");
-                AddLog("드론에 연결되지 않음.");
+                // 연결이 끊겼거나 연결이 안된 상태에서 반복적인 메시지를 방지하기 위한 개선
+                if (!_bluetoothClient.Connected)
+                {
+                    AddLog("드론과의 연결이 끊어졌습니다. 다시 연결하세요.");
+                }
+                else if (_bluetoothStream == null || !_bluetoothStream.CanWrite)
+                {
+                    AddLog("블루투스 스트림이 유효하지 않거나 쓰기 불가능합니다.");
+                }
             }
         }
+
 
 
         private void UpdateDroneRotationAndAltitude(int deltaX, int deltaY)
@@ -517,6 +592,68 @@ namespace DroneControlWinFormsApp
         {
             // 드론 정지 명령
             SendControlCommand(1500, 1000); // 스로틀을 낮춰서 착륙 또는 정지
+        }
+
+        private void armAndTakeOffButton_Click(object sender, EventArgs e)
+        {
+            // ARM 명령을 보내고 스로틀 제어 활성화
+            if (_bluetoothStream != null && _bluetoothStream.CanWrite)
+            {
+                byte[] command = createMspCommand(151, new byte[] { }); // MSP_SET_ARM
+                SendToDrone(command);
+                isThrottleActive = true; // 스로틀 활성화
+                AddLog("드론이 ARM 상태로 전환되었습니다. 이륙을 준비합니다.");
+
+                // 스로틀을 점진적으로 증가시켜 이륙
+                IncreaseThrottleGradually();
+            }
+            else
+            {
+                MessageBox.Show("먼저 드론에 연결하세요.");
+            }
+        }
+
+        // 스로틀 값을 서서히 증가시키는 함수
+        private void IncreaseThrottleGradually()
+        {
+            if (isThrottleActive)
+            {
+                // 스로틀 값을 1000에서 목표치(예: 1800)까지 점진적으로 증가시킴
+                targetThrottle = 1000; // 스로틀 초기값
+
+                while (targetThrottle < 1800) // 1800까지 스로틀 증가
+                {
+                    // 드론에 명령 전송 (회전 속도는 1500 고정, 스로틀만 증가)
+                    SendControlCommand(1500, targetThrottle);
+
+                    targetThrottle += 50; // 50씩 증가
+                    System.Threading.Thread.Sleep(500); // 500ms 대기 (서서히 증가하는 효과)
+
+                    AddLog($"현재 스로틀 값: {targetThrottle}");
+                }
+
+                AddLog("드론이 이륙 중입니다.");
+            }
+        }
+
+        private void landButton_Click(object sender, EventArgs e)
+        {
+            if (isThrottleActive)
+            {
+                targetThrottle = 1800; // 현재 스로틀 값을 1800에서 시작
+                while (targetThrottle > 1000)
+                {
+                    SendControlCommand(1500, targetThrottle); // 회전 속도는 중립(1500)으로 설정
+                    targetThrottle -= 50; // 50씩 감소
+                    System.Threading.Thread.Sleep(500); // 500ms 대기
+                }
+
+                // 스로틀을 최소로 설정한 후 Disarm
+                byte[] command = createMspCommand(152, new byte[] { }); // MSP_SET_DISARM
+                SendToDrone(command);
+                isThrottleActive = false; // 스로틀 비활성화
+                AddLog("드론이 착륙 후 Disarm 상태로 전환되었습니다.");
+            }
         }
 
     }

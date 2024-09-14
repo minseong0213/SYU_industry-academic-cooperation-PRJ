@@ -35,6 +35,7 @@ namespace DroneControlWinFormsApp
             rightJoystickBackgroundPictureBox = new PictureBox();
             leftJoystickHandlePictureBox = new PictureBox();
             rightJoystickHandlePictureBox = new PictureBox();
+            //batteryVoltageLabel = new Label();
             ((ISupportInitialize)leftJoystickBackgroundPictureBox).BeginInit();
             ((ISupportInitialize)rightJoystickBackgroundPictureBox).BeginInit();
             ((ISupportInitialize)leftJoystickHandlePictureBox).BeginInit();
@@ -53,7 +54,7 @@ namespace DroneControlWinFormsApp
             // droneListBox
             // 
             droneListBox.FormattingEnabled = true;
-            droneListBox.Location = new Point(15, 32);
+            droneListBox.Location = new Point(12, 32);
             droneListBox.Name = "droneListBox";
             droneListBox.Size = new Size(175, 324);
             droneListBox.TabIndex = 1;
@@ -167,6 +168,14 @@ namespace DroneControlWinFormsApp
             rightJoystickHandlePictureBox.TabStop = false;
             rightJoystickHandlePictureBox.MouseMove += rightJoystickHandlePictureBox_MouseMove;
             // 
+            // batteryVoltageLabel
+            // 
+            //batteryVoltageLabel.Location = new Point(553, 32);
+            //batteryVoltageLabel.Name = "batteryVoltageLabel";
+            //batteryVoltageLabel.Size = new Size(120, 30);
+            //batteryVoltageLabel.TabIndex = 11;
+            //batteryVoltageLabel.Text = "Battery Voltage: ";
+            // 
             // Form1
             // 
             ClientSize = new Size(1132, 578);
@@ -183,6 +192,7 @@ namespace DroneControlWinFormsApp
             Controls.Add(rightJoystickBackgroundPictureBox);
             Controls.Add(armAndTakeOffButton);
             Controls.Add(landButton);
+            //Controls.Add(batteryVoltageLabel);
             Name = "Form1";
             Text = "Drone Control Interface";
             FormClosing += Form1_FormClosing;
@@ -207,5 +217,6 @@ namespace DroneControlWinFormsApp
         private System.Windows.Forms.PictureBox rightJoystickHandlePictureBox; // 오른쪽 조이스틱 핸들
         private System.Windows.Forms.Button armAndTakeOffButton;
         private System.Windows.Forms.Button landButton;
+        //private System.Windows.Forms.Label batteryVoltageLabel;
     }
 }

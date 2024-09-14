@@ -40,6 +40,12 @@ namespace DroneControlWinFormsApp
         {
             InitializeComponent();
 
+            // 폼에서 키 입력을 받을 수 있도록 설정
+            this.KeyPreview = true;
+
+            // KeyDown 이벤트 핸들러 추가
+            this.KeyDown += new KeyEventHandler(Form1_KeyDown);
+
             // 조이스틱 핸들의 초기 위치 설정
             leftJoystickInitialPosition = leftJoystickHandlePictureBox.Location;
             rightJoystickInitialPosition = rightJoystickHandlePictureBox.Location;
@@ -101,6 +107,9 @@ namespace DroneControlWinFormsApp
 
             // 기존의 연결 상태 체크
             CheckConnectionStatus(sender, e);
+
+            //// 배터리 상태를 주기적으로 요청 및 수신
+            //ReceiveBatteryStatus();
         }
 
 
@@ -261,6 +270,49 @@ namespace DroneControlWinFormsApp
                 MessageBox.Show($"연결 해제 오류: {ex.Message}");
             }
         }
+
+        // 블루투스 데이터 응답
+        //private void ReceiveBluetoothData()
+        //{
+        //    if (_bluetoothStream != null && _bluetoothStream.CanRead)
+        //    {
+        //        try
+        //        {
+        //            // MSP 패킷은 6~10 바이트 정도로 예상 (패킷 크기 설정)
+        //            byte[] buffer = new byte[10];
+        //            int bytesRead = _bluetoothStream.Read(buffer, 0, buffer.Length);
+
+        //            if (bytesRead > 0)
+        //            {
+        //                // 수신한 데이터를 MSP 패킷으로 처리
+        //                ProcessMspResponse(buffer);
+        //            }
+        //        }
+        //        catch (IOException ex)
+        //        {
+        //            AddLog($"블루투스 데이터 수신 오류: {ex.Message}");
+        //        }
+        //    }
+        //}
+
+        // MSP 응답 함수 
+        //private void ProcessMspResponse(byte[] response)
+        //{
+        //    if (response[0] == '$' && response[1] == 'M' && response[2] == '>')
+        //    {
+        //        byte dataSize = response[3];   // 데이터 크기
+        //        byte command = response[4];    // 명령 코드
+
+        //        //if (command == 110 && dataSize == 2)  // MSP_ANALOG 응답
+        //        //{
+        //        //    // 응답 데이터에서 배터리 전압 및 mAh 추출
+        //        //    int voltage = response[5];  // 배터리 전압 (단위: 0.1V)
+
+        //        //    // 배터리 상태 UI 업데이트
+        //        //    UpdateBatteryStatus(voltage);
+        //        //}
+        //    }
+        //}
 
 
         // MSP 패킷 생성 함수
@@ -431,20 +483,60 @@ namespace DroneControlWinFormsApp
             }
         }
 
+        //private void ControlThrottleForTakeoff(int deltaY)
+        //{
+        //    int maxThrottle = 2000; // 스로틀 최대값
+        //    int minThrottle = 1000; // 스로틀 최소값
+        //    // 조이스틱 이동량에 따라 목표 스로틀 값을 설정
+        //    targetThrottle = 1500 - deltaY;
+
+        //    // 스로틀 값을 안전한 범위로 제한
+        //    targetThrottle = Math.Clamp(targetThrottle, minThrottle, maxThrottle);
+
+        //    // 로그 출력
+        //    AddLog($"목표 스로틀 값 설정: {targetThrottle}");
+
+        //    // 스로틀 값을 설정한 후에도 계속 유지하고 드론에 전송합니다.
+        //    SendControlCommand(1500, targetThrottle);
+
+
+
+        //}
+
         private void ControlThrottleForTakeoff(int deltaY)
         {
-            // 조이스틱 이동량에 따라 목표 스로틀 값을 설정
-            targetThrottle = 1500 - deltaY;
+            int minThrottle = 1000;   // 스로틀 최소값
+            int midThrottle = 1500;   // 스로틀 중앙값
+            int maxThrottle = 2000;   // 스로틀 최대값
 
-            // 스로틀 값을 안전한 범위로 제한
-            targetThrottle = Math.Clamp(targetThrottle, 1000, 2000);
+            // 조이스틱 이동 범위 계산
+            int maxY = rightJoystickBackgroundPictureBox.Bottom - rightJoystickHandlePictureBox.Height;  // 조이스틱의 Y축 최대 위치
+            int minY = rightJoystickBackgroundPictureBox.Top;  // 조이스틱의 Y축 최소 위치
+            int midY = (minY + maxY) / 2;  // 조이스틱의 Y축 중앙 위치
 
-            // 로그 출력
+            int joystickY = rightJoystickHandlePictureBox.Top;  // 현재 조이스틱의 Y 위치
+
+            if (joystickY < midY)
+            {
+                // 조이스틱이 중앙 위쪽에 있을 때: 1500에서 2000으로 증가
+                targetThrottle = midThrottle + ((midY - joystickY) * (maxThrottle - midThrottle) / (midY - minY));
+            }
+            else
+            {
+                // 조이스틱이 중앙 아래쪽에 있을 때: 1500에서 1000으로 감소
+                targetThrottle = midThrottle - ((joystickY - midY) * (midThrottle - minThrottle) / (maxY - midY));
+            }
+
+            // 스로틀 값을 제한 (1000에서 2000 사이)
+            targetThrottle = Math.Clamp(targetThrottle, minThrottle, maxThrottle);
+
+            // 로그 출력 (선택 사항)
             AddLog($"목표 스로틀 값 설정: {targetThrottle}");
 
-            // 스로틀 값을 설정한 후에도 계속 유지하고 드론에 전송합니다.
-            SendControlCommand(1500, targetThrottle);
+            // 스로틀 값을 드론에 전송
+            SendControlCommand(1500, targetThrottle);  // 회전 속도는 1500으로 고정
         }
+
 
 
 
@@ -529,6 +621,7 @@ namespace DroneControlWinFormsApp
             byte[] command = createMspCommand(150, data.ToArray()); // MSP_SET_RCDATA (150) 명령 사용
             SendToDrone(command); // 드론에 데이터 전송
             AddLog($"회전 속도: {rotationSpeed}, 스로틀: {throttle}로 드론 제어 명령 전송");
+
         }
 
 
@@ -655,6 +748,139 @@ namespace DroneControlWinFormsApp
                 AddLog("드론이 착륙 후 Disarm 상태로 전환되었습니다.");
             }
         }
+
+        // 배터리 상태 체크
+
+        //private void ReceiveBatteryStatus()
+        //{
+        //    if (_bluetoothStream != null && _bluetoothStream.CanRead)
+        //    {
+        //        try
+        //        {
+        //            // 데이터 수신 (MSP_ANALOG 명령어로 예상)
+        //            byte[] buffer = new byte[7]; // MSP_ANALOG 명령은 7바이트 정도의 패킷을 수신한다고 가정
+        //            int bytesRead = _bluetoothStream.Read(buffer, 0, buffer.Length);
+
+        //            if (bytesRead > 0 && buffer[0] == '$' && buffer[1] == 'M' && buffer[2] == '>')
+        //            {
+        //                // 패킷 확인 후 배터리 상태 값 추출
+        //                byte voltage = buffer[5]; // 전압 정보 (배터리 전압이 0.1V 단위로 전송됨, 예: 126 -> 12.6V)
+
+        //                float batteryVoltage = voltage / 10.0f; // 0.1V 단위로 전송되므로 10으로 나눔
+        //                AddLog($"Battery Voltage: {batteryVoltage}V");
+
+        //                // UI에 업데이트하거나 추가 처리
+        //                UpdateBatteryStatus(batteryVoltage);
+        //            }
+        //        }
+        //        catch (IOException ex)
+        //        {
+        //            AddLog($"배터리 상태 수신 중 오류 발생: {ex.Message}");
+        //        }
+        //        catch (Exception ex)
+        //        {
+        //            AddLog($"알 수 없는 오류 발생: {ex.Message}");
+        //        }
+        //    }
+        //}
+
+        //// 배터리 상태 업데이트 메서드 (UI 업데이트 가능)
+        //private void UpdateBatteryStatus(float voltage)
+        //{
+        //    float batteryVoltage = voltage / 10.0f; // 0.1V 단위로 전송됨
+
+        //    // UI 요소 업데이트 (Label 등)
+        //    batteryVoltageLabel.Text = $"Voltage: {batteryVoltage}V";
+
+        //    // 로그 업데이트
+        //    AddLog($"Battery Voltage: {batteryVoltage}V");
+        //}
+
+        private void SendTrimCommand(byte trimCommand)
+        {
+            // MSP 명령어 생성 (데이터는 비어 있음)
+            byte[] command = createMspCommand(trimCommand, new byte[] { });
+
+            // 명령을 드론으로 전송
+            SendToDrone(command);
+
+            // 로그 출력
+            AddLog($"Trim Command Sent: {trimCommand}");
+        }
+
+        private void Form1_KeyDown(object sender, KeyEventArgs e)
+        {
+            switch (e.KeyCode)
+            {
+                case Keys.W: // 드론 앞으로 이동
+                    MoveDroneForward();
+                    break;
+                case Keys.S: // 드론 뒤로 이동
+                    MoveDroneBackward();
+                    break;
+                case Keys.A: // 드론 왼쪽 이동
+                    MoveDroneLeft();
+                    break;
+                case Keys.D: // 드론 오른쪽 이동
+                    MoveDroneRight();
+                    break;
+
+                // 트림 조정
+                case Keys.Up: // Pitch 트림 증가
+                    SendTrimCommand(153); // MSP_TRIM_UP
+                    AddLog("Trim Up (Pitch)");
+                    break;
+                case Keys.Down: // Pitch 트림 감소
+                    SendTrimCommand(154); // MSP_TRIM_DOWN
+                    AddLog("Trim Down (Pitch)");
+                    break;
+                case Keys.Left: // Roll 트림 감소
+                    SendTrimCommand(155); // MSP_TRIM_LEFT
+                    AddLog("Trim Left (Roll)");
+                    break;
+                case Keys.Right: // Roll 트림 증가
+                    SendTrimCommand(156); // MSP_TRIM_RIGHT
+                    AddLog("Trim Right (Roll)");
+                    break;
+
+                default:
+                    break;
+            }
+        }
+
+        private void MoveDroneForward()
+        {
+            int pitchCommand = 1600;  // 예시로 pitch 값을 증가시켜 앞으로 이동
+            int throttle = targetThrottle; // 현재 스로틀 유지
+            SendControlCommand(pitchCommand, throttle);
+            AddLog("Move Forward");
+        }
+
+        private void MoveDroneBackward()
+        {
+            int pitchCommand = 1400;  // 예시로 pitch 값을 감소시켜 뒤로 이동
+            int throttle = targetThrottle; // 현재 스로틀 유지
+            SendControlCommand(pitchCommand, throttle);
+            AddLog("Move Backward");
+        }
+
+        private void MoveDroneLeft()
+        {
+            int rollCommand = 1400;  // 예시로 roll 값을 감소시켜 왼쪽으로 이동
+            int throttle = targetThrottle; // 현재 스로틀 유지
+            SendControlCommand(rollCommand, throttle);
+            AddLog("Move Left");
+        }
+
+        private void MoveDroneRight()
+        {
+            int rollCommand = 1600;  // 예시로 roll 값을 증가시켜 오른쪽으로 이동
+            int throttle = targetThrottle; // 현재 스로틀 유지
+            SendControlCommand(rollCommand, throttle);
+            AddLog("Move Right");
+        }
+
+
 
     }
 }

@@ -35,7 +35,7 @@ namespace DroneControlWinFormsApp
             rightJoystickBackgroundPictureBox = new PictureBox();
             leftJoystickHandlePictureBox = new PictureBox();
             rightJoystickHandlePictureBox = new PictureBox();
-            //batteryVoltageLabel = new Label();
+            hoverModeButton = new Button();
             ((ISupportInitialize)leftJoystickBackgroundPictureBox).BeginInit();
             ((ISupportInitialize)rightJoystickBackgroundPictureBox).BeginInit();
             ((ISupportInitialize)leftJoystickHandlePictureBox).BeginInit();
@@ -54,7 +54,7 @@ namespace DroneControlWinFormsApp
             // droneListBox
             // 
             droneListBox.FormattingEnabled = true;
-            droneListBox.Location = new Point(12, 32);
+            droneListBox.Location = new Point(12, 37);
             droneListBox.Name = "droneListBox";
             droneListBox.Size = new Size(175, 324);
             droneListBox.TabIndex = 1;
@@ -168,13 +168,14 @@ namespace DroneControlWinFormsApp
             rightJoystickHandlePictureBox.TabStop = false;
             rightJoystickHandlePictureBox.MouseMove += rightJoystickHandlePictureBox_MouseMove;
             // 
-            // batteryVoltageLabel
+            // hoverModeButton
             // 
-            //batteryVoltageLabel.Location = new Point(553, 32);
-            //batteryVoltageLabel.Name = "batteryVoltageLabel";
-            //batteryVoltageLabel.Size = new Size(120, 30);
-            //batteryVoltageLabel.TabIndex = 11;
-            //batteryVoltageLabel.Text = "Battery Voltage: ";
+            hoverModeButton.Location = new Point(553, 37);
+            hoverModeButton.Name = "hoverModeButton";
+            hoverModeButton.Size = new Size(100, 30);
+            hoverModeButton.TabIndex = 11;
+            hoverModeButton.Text = "Hover Mode";
+            hoverModeButton.Click += hoverModeButton_Click;
             // 
             // Form1
             // 
@@ -192,7 +193,7 @@ namespace DroneControlWinFormsApp
             Controls.Add(rightJoystickBackgroundPictureBox);
             Controls.Add(armAndTakeOffButton);
             Controls.Add(landButton);
-            //Controls.Add(batteryVoltageLabel);
+            Controls.Add(hoverModeButton);
             Name = "Form1";
             Text = "Drone Control Interface";
             FormClosing += Form1_FormClosing;
@@ -218,5 +219,6 @@ namespace DroneControlWinFormsApp
         private System.Windows.Forms.Button armAndTakeOffButton;
         private System.Windows.Forms.Button landButton;
         //private System.Windows.Forms.Label batteryVoltageLabel;
+        private System.Windows.Forms.Button hoverModeButton;
     }
 }

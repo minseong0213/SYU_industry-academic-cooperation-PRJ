@@ -31,10 +31,16 @@ namespace DroneControlWinFormsApp
 
         private int currentThrottle = 1000; // 현재 스로틀 값 (초기값은 1000)
         private int targetThrottle = 1500;  // 목표 스로틀 값
+        private int currentyaw = 1500;     // 중립 상태
+        private int currentpitch = 1500;   // 중립 상태
+        private int currentroll = 1500;    // 중립 상태
         private bool isConnected = false; // 연결 상태를 저장하는 변수
         private bool isThrottleActive = false; // 스로틀 값 전송 활성화 여부
         // 로그 텍스트박스
         private TextBox logTextBox;
+
+        // 호버링 상태
+        private bool isHovering = false;
 
         public Form1()
         {
@@ -102,7 +108,7 @@ namespace DroneControlWinFormsApp
             // ARM 명령이 전송된 경우에만 스로틀 값을 업데이트
             if (isThrottleActive)
             {
-                SendControlCommand(1500, targetThrottle); // 스로틀 값을 유지하면서 지속적으로 전송
+                SendControlCommand(currentyaw, currentpitch, currentroll, targetThrottle); // 스로틀 값을 유지하면서 지속적으로 전송
             }
 
             // 기존의 연결 상태 체크
@@ -349,7 +355,6 @@ namespace DroneControlWinFormsApp
 
         private void sendDataButton_Click(object sender, EventArgs e)
         {
-            // ARM 명령을 보내는 로직
             if (_bluetoothStream != null && _bluetoothStream.CanWrite)
             {
                 byte[] command = null;
@@ -357,38 +362,55 @@ namespace DroneControlWinFormsApp
                 switch (commandComboBox.SelectedItem.ToString())
                 {
                     case "ARM":
-                        command = createMspCommand(151, new byte[] { }); // MSP_SET_ARM
+                        // 가속도계 보정 (MSP_ACC_CALIBRATION: 205)을 먼저 전송
+                        command = createMspCommand(205, new byte[] { });
+                        try
+                        {
+                            _bluetoothStream.Write(command, 0, command.Length);
+                            AddLog("가속도계 보정 명령 전송 성공");
+
+                            // 1초 대기 (보정 완료 대기)
+                            System.Threading.Thread.Sleep(2000); // 2초 대기
+
+                            // ARM 명령 전송 (MSP_ARM: 151)
+                            command = createMspCommand(151, new byte[] { });
+                            _bluetoothStream.Write(command, 0, command.Length);
+                            AddLog("ARM 명령 전송 성공");
+
+                            isThrottleActive = true;
+                        }
+                        catch (Exception ex)
+                        {
+                            AddLog($"명령 전송 오류: {ex.Message}");
+                        }
                         break;
+
                     case "DISARM":
-                        command = createMspCommand(152, new byte[] { }); // MSP_SET_DISARM
-                        isThrottleActive = false; // DISARM일 때 스로틀 전송 중지
+                        command = createMspCommand(152, new byte[] { });
+                        isThrottleActive = false; // DISARM 시 스로틀 비활성화
+                        try
+                        {
+                            _bluetoothStream.Write(command, 0, command.Length);
+                            AddLog("DISARM 명령 전송 성공");
+                        }
+                        catch (Exception ex)
+                        {
+                            AddLog($"명령 전송 오류: {ex.Message}");
+                        }
                         break;
+
                     default:
-                        MessageBox.Show("올바른 명령을 선택하세요.");
-                        return;
-                }
-
-                try
-                {
-                    _bluetoothStream.Write(command, 0, command.Length);
-                    MessageBox.Show($"{commandComboBox.SelectedItem} 명령 전송 성공");
-
-                    // ARM 명령이 전송되었을 때 스로틀 전송 활성화
-                    if (commandComboBox.SelectedItem.ToString() == "ARM")
-                    {
-                        isThrottleActive = true; // ARM 상태일 때 스로틀 전송 활성화
-                    }
-                }
-                catch (Exception ex)
-                {
-                    MessageBox.Show($"명령 전송 오류: {ex.Message}");
+                        AddLog("올바른 명령을 선택하세요.");
+                        break;
                 }
             }
             else
             {
-                MessageBox.Show("먼저 드론에 연결하세요.");
+                AddLog("먼저 드론에 연결하세요.");
             }
         }
+
+
 
         // Form1_FormClosing 메서드에서 null 체크 추가
         private void Form1_FormClosing(object sender, FormClosingEventArgs e)
@@ -445,8 +467,8 @@ namespace DroneControlWinFormsApp
             // 조이스틱 핸들 초기 위치로 되돌리기
             leftJoystickHandlePictureBox.Location = leftJoystickInitialPosition;
 
-            // 드론 정지
-            StopDroneMovement();
+            //// 드론 정지
+            //StopDroneMovement();
         }
 
 
@@ -477,9 +499,11 @@ namespace DroneControlWinFormsApp
 
                 rightJoystickHandlePictureBox.Location = new Point(x, y);
 
-                // 스로틀 값을 조정하는 로직
+                // 스로틀만 조정하는 로직
                 ControlThrottleForTakeoff(y - rightJoystickInitialPosition.Y);
-                SendControlCommand(1500, targetThrottle); // 회전 속도는 1500으로 고정
+
+                // Pitch는 변경하지 않고, 현재의 Pitch, Roll, Yaw 값은 유지한 채 스로틀만 변경
+                SendControlCommand(currentyaw, currentpitch, currentroll, targetThrottle);
             }
         }
 
@@ -503,6 +527,7 @@ namespace DroneControlWinFormsApp
 
         //}
 
+        // 스로틀만 변경하는 함수
         private void ControlThrottleForTakeoff(int deltaY)
         {
             int minThrottle = 1000;   // 스로틀 최소값
@@ -532,37 +557,34 @@ namespace DroneControlWinFormsApp
 
             // 로그 출력 (선택 사항)
             AddLog($"목표 스로틀 값 설정: {targetThrottle}");
-
-            // 스로틀 값을 드론에 전송
-            SendControlCommand(1500, targetThrottle);  // 회전 속도는 1500으로 고정
         }
 
 
 
 
-        private void UpdateThrottle()
-        {
-            //// 목표 스로틀 값까지 점진적으로 증가
-            //if (currentThrottle < targetThrottle)
-            //{
-            //    currentThrottle += 10; // 10씩 증가 (조정 가능)
-            //    if (currentThrottle > targetThrottle)
-            //    {
-            //        currentThrottle = targetThrottle;
-            //    }
-            //}
-            //else if (currentThrottle > targetThrottle)
-            //{
-            //    currentThrottle -= 10; // 스로틀 감소 시에도 점진적으로
-            //    if (currentThrottle < targetThrottle)
-            //    {
-            //        currentThrottle = targetThrottle;
-            //    }
-            //}
+        //private void UpdateThrottle()
+        //{
+        //    //// 목표 스로틀 값까지 점진적으로 증가
+        //    //if (currentThrottle < targetThrottle)
+        //    //{
+        //    //    currentThrottle += 10; // 10씩 증가 (조정 가능)
+        //    //    if (currentThrottle > targetThrottle)
+        //    //    {
+        //    //        currentThrottle = targetThrottle;
+        //    //    }
+        //    //}
+        //    //else if (currentThrottle > targetThrottle)
+        //    //{
+        //    //    currentThrottle -= 10; // 스로틀 감소 시에도 점진적으로
+        //    //    if (currentThrottle < targetThrottle)
+        //    //    {
+        //    //        currentThrottle = targetThrottle;
+        //    //    }
+        //    //}
 
-            // 현재 스로틀 값으로 드론 제어 명령 전송
-            SendControlCommand(1500, currentThrottle); // Yaw 값은 중립으로 고정 (1500)
-        }
+        //    // 현재 스로틀 값으로 드론 제어 명령 전송
+        //    SendControlCommand(1500, currentThrottle); // Yaw 값은 중립으로 고정 (1500)
+        //}
 
 
 
@@ -599,18 +621,45 @@ namespace DroneControlWinFormsApp
         //    // 예: sendControlCommand("MOVE", deltaX, deltaY);
         //}
 
-        private void SendControlCommand(int rotationSpeed, int throttle)
+        //private void SendControlCommand(int rotationSpeed, int throttle)
+        //{
+        //    int[] rcData = new int[8];
+        //    rcData[0] = 1500; // Roll 중립
+        //    rcData[1] = 1500; // Pitch 중립
+        //    rcData[2] = Math.Clamp(throttle, 1000, 2000); // 스로틀
+        //    rcData[3] = 1500;
+        //    rcData[4] = 1500; // Aux1 (기본값)
+        //    rcData[5] = 1500; // Aux2 (기본값)
+        //    rcData[6] = 1500; // Aux3 (기본값)
+        //    rcData[7] = 1500; // Aux4 (기본값)
+
+
+        //    List<byte> data = new List<byte>();
+        //    foreach (int val in rcData)
+        //    {
+        //        data.Add((byte)(val >> 8)); // 상위 바이트
+        //        data.Add((byte)(val & 0xFF)); // 하위 바이트
+        //    }
+
+        //    byte[] command = createMspCommand(150, data.ToArray()); // MSP_SET_RCDATA (150) 명령 사용
+        //    SendToDrone(command); // 드론에 데이터 전송
+        //    AddLog($"회전 속도: {rotationSpeed}, 스로틀: {throttle}로 드론 제어 명령 전송");
+
+        //}
+
+        private void SendControlCommand(int yaw, int pitch, int roll, int throttle)
         {
             int[] rcData = new int[8];
-            rcData[0] = 1500; // Roll 중립
-            rcData[1] = 1500; // Pitch 중립
-            rcData[2] = Math.Clamp(throttle, 1000, 2000); // 스로틀
-            rcData[3] = 1500;
-            rcData[4] = 1500; // Aux1 (기본값)
-            rcData[5] = 1500; // Aux2 (기본값)
-            rcData[6] = 1500; // Aux3 (기본값)
-            rcData[7] = 1500; // Aux4 (기본값)
+            rcData[0] = Math.Clamp(roll, 1000, 2000);   // Roll 값 조정
+            rcData[1] = Math.Clamp(pitch, 1000, 2000);  // Pitch 값 조정
+            rcData[2] = Math.Clamp(throttle, 1000, 2000); // 스로틀 값 조정, 기본값은 1500
+            rcData[3] = Math.Clamp(yaw, 1000, 2000);    // Yaw 값 조정
+            rcData[4] = 1500;                           // Aux1 (기본값)
+            rcData[5] = 1500;                           // Aux2 (기본값)
+            rcData[6] = 1500;                           // Aux3 (기본값)
+            rcData[7] = 1500;                           // Aux4 (기본값)
 
+            // MSP 명령어 전송 (MSP_SET_RCDATA)
             List<byte> data = new List<byte>();
             foreach (int val in rcData)
             {
@@ -619,10 +668,65 @@ namespace DroneControlWinFormsApp
             }
 
             byte[] command = createMspCommand(150, data.ToArray()); // MSP_SET_RCDATA (150) 명령 사용
-            SendToDrone(command); // 드론에 데이터 전송
-            AddLog($"회전 속도: {rotationSpeed}, 스로틀: {throttle}로 드론 제어 명령 전송");
 
+            // 전송할 데이터를 로그로 출력해 전송 확인
+            Console.WriteLine("Command: " + BitConverter.ToString(command));
+            SendToDrone(command); // 드론에 데이터 전송
+
+            AddLog($"Yaw: {yaw}, Pitch: {pitch}, Roll: {roll}, Throttle: {throttle}로 드론 제어 명령 전송");
         }
+
+
+        //private void SendYawPitchRollCommand(int yaw, int pitch, int roll)
+        //{
+        //    int[] rcData = new int[8];
+        //    rcData[0] = Math.Clamp(roll, 1000, 2000);   // Roll 값 조정
+        //    rcData[1] = Math.Clamp(pitch, 1000, 2000);  // Pitch 값 조정
+        //    rcData[2] = 1500;                           // Throttle은 1500으로 고정
+        //    rcData[3] = Math.Clamp(yaw, 1000, 2000);    // Yaw 값 조정
+        //    rcData[4] = 1500;                           // Aux1 (기본값)
+        //    rcData[5] = 1500;                           // Aux2 (기본값)
+        //    rcData[6] = 1500;                           // Aux3 (기본값)
+        //    rcData[7] = 1500;                           // Aux4 (기본값)
+
+        //    // MSP 명령어 전송 (MSP_SET_RCDATA)
+        //    List<byte> data = new List<byte>();
+        //    foreach (int val in rcData)
+        //    {
+        //        data.Add((byte)(val >> 8)); // 상위 바이트
+        //        data.Add((byte)(val & 0xFF)); // 하위 바이트
+        //    }
+
+        //    byte[] command = createMspCommand(150, data.ToArray()); // MSP_SET_RCDATA (150) 명령 사용
+        //    SendToDrone(command); // 드론에 데이터 전송
+        //    AddLog($"Yaw: {yaw}, Pitch: {pitch}, Roll: {roll}로 드론 제어 명령 전송");
+        //}
+
+        //private void SendControlCommand(int rotationSpeed, int throttle)
+        //{
+        //    int[] rcData = new int[8];
+        //    rcData[0] = 1500; // Roll 중립
+        //    rcData[1] = 1500; // Pitch 중립
+        //    rcData[2] = Math.Clamp(throttle, 1000, 2000); // 스로틀 값을 1000~2000으로 제한
+        //    rcData[3] = rotationSpeed; // Yaw 회전 속도
+        //    rcData[4] = 1500; // Aux1 (기본값)
+        //    rcData[5] = 1500; // Aux2 (기본값)
+        //    rcData[6] = 1500; // Aux3 (기본값)
+        //    rcData[7] = 1500; // Aux4 (기본값)
+
+        //    // MSP 패킷 생성
+        //    List<byte> data = new List<byte>();
+        //    foreach (int val in rcData)
+        //    {
+        //        data.Add((byte)(val >> 8)); // 상위 바이트
+        //        data.Add((byte)(val & 0xFF)); // 하위 바이트
+        //    }
+
+        //    // MSP_SET_RAW_RC 명령 (150) 전송
+        //    byte[] command = createMspCommand(150, data.ToArray());
+        //    SendToDrone(command); // 드론에 명령 전송
+        //    AddLog($"Yaw: {rotationSpeed}, 스로틀: {throttle}로 제어 명령 전송");
+        //}
 
 
         private void SendToDrone(byte[] command)
@@ -667,25 +771,25 @@ namespace DroneControlWinFormsApp
 
 
 
-        private void UpdateDroneRotationAndAltitude(int deltaX, int deltaY)
-        {
-            // deltaX에 따라 드론 회전, deltaY에 따라 드론 상승/하강 제어
-            int rotationSpeed = 1500 + deltaX; // 기본값 1500에 좌우 이동량을 더하여 회전 속도 설정
-            int throttle = 1500 - deltaY; // 기본값 1500에서 Y 축 이동량을 빼서 스로틀 설정
+        //private void UpdateDroneRotationAndAltitude(int deltaX, int deltaY)
+        //{
+        //    // deltaX에 따라 드론 회전, deltaY에 따라 드론 상승/하강 제어
+        //    int rotationSpeed = 1500 + deltaX; // 기본값 1500에 좌우 이동량을 더하여 회전 속도 설정
+        //    int throttle = 1500 - deltaY; // 기본값 1500에서 Y 축 이동량을 빼서 스로틀 설정
 
-            // 스로틀 및 회전 속도를 1000에서 2000 사이로 제한
-            rotationSpeed = Math.Clamp(rotationSpeed, 1000, 2000);
-            throttle = Math.Clamp(throttle, 1000, 2000);
+        //    // 스로틀 및 회전 속도를 1000에서 2000 사이로 제한
+        //    rotationSpeed = Math.Clamp(rotationSpeed, 1000, 2000);
+        //    throttle = Math.Clamp(throttle, 1000, 2000);
 
-            // 드론 제어 명령 전송
-            SendControlCommand(rotationSpeed, throttle);
-        }
+        //    // 드론 제어 명령 전송
+        //    SendControlCommand(rotationSpeed, throttle);
+        //}
 
-        private void StopDroneMovement()
-        {
-            // 드론 정지 명령
-            SendControlCommand(1500, 1000); // 스로틀을 낮춰서 착륙 또는 정지
-        }
+        //private void StopDroneMovement()
+        //{
+        //    // 드론 정지 명령
+        //    SendControlCommand(1500, 1000); // 스로틀을 낮춰서 착륙 또는 정지
+        //}
 
         private void armAndTakeOffButton_Click(object sender, EventArgs e)
         {
@@ -717,7 +821,7 @@ namespace DroneControlWinFormsApp
                 while (targetThrottle < 1800) // 1800까지 스로틀 증가
                 {
                     // 드론에 명령 전송 (회전 속도는 1500 고정, 스로틀만 증가)
-                    SendControlCommand(1500, targetThrottle);
+                    SendControlCommand(currentpitch,currentroll,currentyaw, targetThrottle);
 
                     targetThrottle += 50; // 50씩 증가
                     System.Threading.Thread.Sleep(500); // 500ms 대기 (서서히 증가하는 효과)
@@ -736,7 +840,7 @@ namespace DroneControlWinFormsApp
                 targetThrottle = 1800; // 현재 스로틀 값을 1800에서 시작
                 while (targetThrottle > 1000)
                 {
-                    SendControlCommand(1500, targetThrottle); // 회전 속도는 중립(1500)으로 설정
+                    SendControlCommand(currentpitch,currentroll,currentyaw, targetThrottle); // 회전 속도는 중립(1500)으로 설정
                     targetThrottle -= 50; // 50씩 감소
                     System.Threading.Thread.Sleep(500); // 500ms 대기
                 }
@@ -796,91 +900,113 @@ namespace DroneControlWinFormsApp
         //    AddLog($"Battery Voltage: {batteryVoltage}V");
         //}
 
-        private void SendTrimCommand(byte trimCommand)
-        {
-            // MSP 명령어 생성 (데이터는 비어 있음)
-            byte[] command = createMspCommand(trimCommand, new byte[] { });
-
-            // 명령을 드론으로 전송
-            SendToDrone(command);
-
-            // 로그 출력
-            AddLog($"Trim Command Sent: {trimCommand}");
-        }
-
         private void Form1_KeyDown(object sender, KeyEventArgs e)
         {
             switch (e.KeyCode)
             {
+                // Pitch (앞뒤 방향)
                 case Keys.W: // 드론 앞으로 이동
-                    MoveDroneForward();
+                    currentpitch = Math.Clamp(currentpitch + 1, 1000, 2000); // Pitch 값을 증가시켜 앞으로 이동
+                    AddLog("Move Forward (Pitch Up)");
                     break;
+
                 case Keys.S: // 드론 뒤로 이동
-                    MoveDroneBackward();
+                    currentpitch = Math.Clamp(currentpitch - 1, 1000, 2000); // Pitch 값을 감소시켜 뒤로 이동
+                    AddLog("Move Backward (Pitch Down)");
                     break;
-                case Keys.A: // 드론 왼쪽 이동
-                    MoveDroneLeft();
+
+                // Roll (좌우 방향)
+                case Keys.A: // 드론 왼쪽으로 이동
+                    currentroll = Math.Clamp(currentroll - 1, 1000, 2000); // Roll 값을 감소시켜 왼쪽으로 이동
+                    AddLog("Move Left (Roll Left)");
                     break;
-                case Keys.D: // 드론 오른쪽 이동
-                    MoveDroneRight();
+
+                case Keys.D: // 드론 오른쪽으로 이동
+                    currentroll = Math.Clamp(currentroll + 1, 1000, 2000); // Roll 값을 증가시켜 오른쪽으로 이동
+                    AddLog("Move Right (Roll Right)");
+                    break;
+
+                // Yaw (회전)
+                case Keys.Q: // 드론 왼쪽으로 회전
+                    currentyaw = Math.Clamp(currentyaw - 1, 1000, 2000); // Yaw 값을 감소시켜 왼쪽 회전
+                    AddLog("Rotate Left (Yaw Left)");
+                    break;
+
+                case Keys.E: // 드론 오른쪽으로 회전
+                    currentyaw = Math.Clamp(currentyaw + 1, 1000, 2000); // Yaw 값을 증가시켜 오른쪽 회전
+                    AddLog("Rotate Right (Yaw Right)");
                     break;
 
                 // 트림 조정
-                case Keys.Up: // Pitch 트림 증가
-                    SendTrimCommand(153); // MSP_TRIM_UP
-                    AddLog("Trim Up (Pitch)");
+                //case Keys.Up: // Pitch 트림 증가
+                //    SendTrimCommand(153); // MSP_TRIM_UP
+                //    AddLog("Trim Up (Pitch)");
+                //    break;
+                //case Keys.Down: // Pitch 트림 감소
+                //    SendTrimCommand(154); // MSP_TRIM_DOWN
+                //    AddLog("Trim Down (Pitch)");
+                //    break;
+                //case Keys.Left: // Roll 트림 감소
+                //    SendTrimCommand(155); // MSP_TRIM_LEFT
+                //    AddLog("Trim Left (Roll)");
+                //    break;
+                //case Keys.Right: // Roll 트림 증가
+                //    SendTrimCommand(156); // MSP_TRIM_RIGHT
+                //    AddLog("Trim Right (Roll)");
+                //    break;
+
+                // Hover Mode
+                case Keys.H: // 호버 모드 활성화
+                    SendHoverModeCommand(true);
+                    AddLog("Hover mode ON");
                     break;
-                case Keys.Down: // Pitch 트림 감소
-                    SendTrimCommand(154); // MSP_TRIM_DOWN
-                    AddLog("Trim Down (Pitch)");
-                    break;
-                case Keys.Left: // Roll 트림 감소
-                    SendTrimCommand(155); // MSP_TRIM_LEFT
-                    AddLog("Trim Left (Roll)");
-                    break;
-                case Keys.Right: // Roll 트림 증가
-                    SendTrimCommand(156); // MSP_TRIM_RIGHT
-                    AddLog("Trim Right (Roll)");
+                case Keys.L: // 호버 모드 비활성화
+                    SendHoverModeCommand(false);
+                    AddLog("Hover mode OFF");
                     break;
 
                 default:
                     break;
             }
+            // 변경된 Pitch, Roll, Yaw 값을 드론에 전송
+            SendControlCommand(currentyaw, currentpitch, currentroll , targetThrottle);
         }
 
-        private void MoveDroneForward()
+        // 호버 모드 버튼 클릭 이벤트 핸들러
+        private void hoverModeButton_Click(object sender, EventArgs e)
         {
-            int pitchCommand = 1600;  // 예시로 pitch 값을 증가시켜 앞으로 이동
-            int throttle = targetThrottle; // 현재 스로틀 유지
-            SendControlCommand(pitchCommand, throttle);
-            AddLog("Move Forward");
+            //if (isHovering)
+            //{
+            //    // 호버링 비활성화
+            //    SendHoverModeCommand(false);
+            //}
+            //else
+            //{
+            //    // 호버링 활성화
+            //    SendHoverModeCommand(true);
+            //}
         }
 
-        private void MoveDroneBackward()
+        // 호버 모드 신호 전송 함수
+        private void SendHoverModeCommand(bool enableHover)
         {
-            int pitchCommand = 1400;  // 예시로 pitch 값을 감소시켜 뒤로 이동
-            int throttle = targetThrottle; // 현재 스로틀 유지
-            SendControlCommand(pitchCommand, throttle);
-            AddLog("Move Backward");
+            if (_bluetoothStream != null && _bluetoothStream.CanWrite)
+            {
+                byte[] command = enableHover
+                    ? createMspCommand(160, new byte[] { (byte)'H' })  // 160 명령으로 'H' 전송 (호버링 활성화)
+                    : createMspCommand(160, new byte[] { (byte)'h' });  // 160 명령으로 'h' 전송 (호버링 비활성화)
+
+                SendToDrone(command);  // 드론에 전송
+                AddLog(enableHover ? "호버 모드 활성화 명령 전송" : "호버 모드 비활성화 명령 전송");
+
+                // 호버링 상태 토글
+                isHovering = enableHover;
+            }
+            else
+            {
+                AddLog("먼저 드론에 연결하세요.");
+            }
         }
-
-        private void MoveDroneLeft()
-        {
-            int rollCommand = 1400;  // 예시로 roll 값을 감소시켜 왼쪽으로 이동
-            int throttle = targetThrottle; // 현재 스로틀 유지
-            SendControlCommand(rollCommand, throttle);
-            AddLog("Move Left");
-        }
-
-        private void MoveDroneRight()
-        {
-            int rollCommand = 1600;  // 예시로 roll 값을 증가시켜 오른쪽으로 이동
-            int throttle = targetThrottle; // 현재 스로틀 유지
-            SendControlCommand(rollCommand, throttle);
-            AddLog("Move Right");
-        }
-
-
 
     }
 }
